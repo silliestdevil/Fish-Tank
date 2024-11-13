@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audio File Analysis</title>
+</head>
+<body>
+  <h1>Audio File Analysis</h1>
+  <canvas id="canvas" width="800" height="200"></canvas>
+
+  <p id="volumeDisplay"></p>
+  <p id="peakFrequencyDisplay"></p>
+  <p id="bpmDisplay"></p>
+  <p id="transientDisplay"></p>  
+  <p id="dynamicRangeDisplay"></p>  
+  <p id="singingStatus"></p>
+
+  <button id="playButton">Play Audio</button>
+  <script>
+    // Web Audio API setup
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048; // Size of the FFT (Fast Fourier Transform)
+    const bufferLength = analyser.frequencyBinCount; // Number of frequency bins
+
+    // Canvas for visualization
+    const canvas = document.getElementById('canvas');
+    const canvasCtx = canvas.getContext('2d');
+
+    const audioDataArray = [];
+
+    // Load audio file directly (replace with your audio file's path)
+    const audioFile = 'resources/voiceA.mp3';  // Path to your audio file
+
+    // Fetch and decode the audio file
+    fetch(audioFile)
+      .then(response => response.arrayBuffer())
+      .then(data => audioContext.decodeAudioData(data))
+      .then(audioBuffer => {
+        // Create a buffer source node
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+
+        // Connect source to analyser and then to speakers
+        source.connect(analyser);
+        analyser.connect(audioContext.destination);
+    // Set up the play button
+    const playButton = document.getElementById('playButton');
+        playButton.addEventListener('click', () => {
+          // Start the audio playback when the user clicks the play button
+          audioContext.resume().then(() => {
+            source.start();
+            // Start analyzing the audio after playback begins
+            analyzeAudio(audioBuffer);
+            playButton.disabled = true; // Disable button after it's clicked
+          });
+        });
+      })
+      .catch(error => {
+        console.error('Error loading or decoding the audio file', error);
+      });
+
+    // Function to analyze audio data
+    function analyzeAudio(audioBuffer) {
+      const frequencyData = new Uint8Array(bufferLength);
+      const timeDomainData = new Uint8Array(bufferLength);
+      const timeStamps = [];
+
+      // Function to extract and analyze data
+      function extractData() {
+        analyser.getByteFrequencyData(frequencyData);
+        analyser.getByteTimeDomainData(timeDomainData);
+
+        const volume = calculateRMS(timeDomainData);
+        const peakFrequency = findPeakFrequency(frequencyData);
+        const transients = detectTransients(timeDomainData); 
+        const dynamicRange = calculateDynamicRange(timeDomainData);
+        const bpm = detectBPM(timeDomainData, timeStamps);
+        const singingStatus = detectSinging(frequencyData);
+        
+
+
+        // Display data dynamically
+        displayData(volume, peakFrequency, bpm, transients, dynamicRange, singingStatus);
+
+        // Visualize frequency data
+        visualizeFrequency(frequencyData);
+      }
+
+
+      // Function to visualize frequency data on the canvas
+      function visualizeFrequency(frequencyData) {
+        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+        const barWidth = (canvas.width / bufferLength) * 2.5;
+        let barHeight;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          barHeight = frequencyData[i];
+          canvasCtx.fillStyle = `rgb(${barHeight + 100}, 50, 50)`;
+          canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+          x += barWidth + 1;
+        }
+      }
+
+      // Calculate RMS (Root Mean Square) volume
+      function calculateRMS(timeDomainData) {
+        let sum = 0;
+        for (let i = 0; i < timeDomainData.length; i++) {
+          sum += Math.pow(timeDomainData[i] - 128, 2); // 128 is the zero point
+        }
+        return Math.sqrt(sum / timeDomainData.length);
+      }
+
+      // Find peak frequency (highest amplitude in frequency data)
+      function findPeakFrequency(frequencyData) {
+        let maxAmplitude = 0;
+        let peakFreqIndex = 0;
+
+        for (let i = 0; i < frequencyData.length; i++) {
+          if (frequencyData[i] > maxAmplitude) {
+            maxAmplitude = frequencyData[i];
+            peakFreqIndex = i;
+          }
+        }
+
+        const nyquist = audioContext.sampleRate / 2;
+        return (peakFreqIndex / bufferLength) * nyquist;
+      }
+
+      function detectTransients(timeDomainData) {
+        let zeroCrossings = 0;
+        for (let i = 1; i < timeDomainData.length; i++) {
+          if ((timeDomainData[i - 1] < 128 && timeDomainData[i] >= 128) || (timeDomainData[i - 1] >= 128 && timeDomainData[i] < 128)) {
+            zeroCrossings++;
+          }
+        }
+        return zeroCrossings;
+      }
+
+      // Calculate Dynamic Range
+      function calculateDynamicRange(timeDomainData) {
+        let peak = 0;
+        let rms = 0;
+
+        for (let i = 0; i < timeDomainData.length; i++) {
+          rms += Math.pow(timeDomainData[i] - 128, 2);
+          peak = Math.max(peak, timeDomainData[i]);
+        }
+        rms = Math.sqrt(rms / timeDomainData.length);
+
+        return peak - rms;
+      }
+
+      // Detect BPM
+          // Detect BPM (Using the time-domain signal and peak detection)
+          function detectBPM(timeDomainData, timeStamps) {
+        const threshold = 150; // Adjust this threshold based on your audio
+        const peakIntervals = [];
+
+        // Detect peaks in the time-domain signal (find sharp changes)
+        for (let i = 1; i < timeDomainData.length; i++) {
+          if (timeDomainData[i] > threshold && timeDomainData[i - 1] <= threshold) {
+            const currentTime = audioContext.currentTime;
+            timeStamps.push(currentTime);
+          }
+        }
+
+        // Calculate the intervals between detected peaks
+        if (timeStamps.length > 1) {
+          for (let i = 1; i < timeStamps.length; i++) {
+            peakIntervals.push(timeStamps[i] - timeStamps[i - 1]);
+          }
+
+          // Calculate the average interval in seconds
+          const averageInterval = peakIntervals.reduce((a, b) => a + b) / peakIntervals.length;
+
+          // Convert the interval to BPM (beats per minute)
+          const bpm = Math.round(60 / averageInterval);
+          return bpm;
+        }
+
+        return 0; // Return 0 if no peaks detected
+      }
+
+      // Detect Singing vs Non-Singing (based on harmonic content)
+      function detectSinging(frequencyData) {
+        const harmonicThreshold = 50; // Tune this threshold as needed
+
+        for (let i = 0; i < frequencyData.length; i++) {
+          if (frequencyData[i] > harmonicThreshold) {
+            return 'Singing';
+          }
+        }
+        return 'Non-Singing';
+      }
+
+      // Display extracted data
+      function displayData(volume, peakFrequency, bpm, transients, dynamicRange, singingStatus) {
+        document.getElementById('volumeDisplay').innerText = `Volume: ${volume.toFixed(2)}`;
+        document.getElementById('peakFrequencyDisplay').innerText = `Peak Frequency: ${peakFrequency.toFixed(2)} Hz`;
+        document.getElementById('bpmDisplay').innerText = `BPM: ${bpm}`;
+        document.getElementById('transientDisplay').innerText = `Transients: ${transients}`;
+        document.getElementById('dynamicRangeDisplay').innerText = `Dynamic Range: ${dynamicRange.toFixed(2)}`;
+        document.getElementById('singingStatus').innerText = `Status: ${singingStatus}`;
+      }
+    
+
+      // Continuously analyze and visualize data
+      function draw() {
+        requestAnimationFrame(draw);
+        extractData();
+      }
+
+      draw();
+    }
+  </script>
+
+
+</body>
+</html>
