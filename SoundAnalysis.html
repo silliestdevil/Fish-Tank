@@ -196,6 +196,25 @@
         return 'Non-Singing';
       }
 
+      
+       // Function to post the singing state to the server
+       function postSingingState(state) {
+        fetch('http://localhost:3000/singing', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ state: state })
+        })
+        .then(response => response.json())
+        .then(data => {
+          console.log('Singing state updated:', data);
+        })
+        .catch(error => {
+          console.error('Error updating singing state:', error);
+        });
+      }
+
       // Display extracted data
       function displayData(volume, peakFrequency, bpm, transients, dynamicRange, singingStatus) {
         document.getElementById('volumeDisplay').innerText = `Volume: ${volume.toFixed(2)}`;
