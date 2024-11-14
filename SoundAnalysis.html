@@ -17,6 +17,7 @@
   <p id="singingStatus"></p>
 
   <button id="playButton">Play Audio</button>
+
   <script>
     // Web Audio API setup
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -28,7 +29,8 @@
     const canvas = document.getElementById('canvas');
     const canvasCtx = canvas.getContext('2d');
 
-    const audioDataArray = [];
+    let lastSingingStatus = null;
+    let audioBuffer; // Store audio buffer for replay
 
     // Load audio file directly (replace with your audio file's path)
     const audioFile = 'resources/voiceA.mp3';  // Path to your audio file
@@ -37,32 +39,35 @@
     fetch(audioFile)
       .then(response => response.arrayBuffer())
       .then(data => audioContext.decodeAudioData(data))
-      .then(audioBuffer => {
-        // Create a buffer source node
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-
-        // Connect source to analyser and then to speakers
-        source.connect(analyser);
-        analyser.connect(audioContext.destination);
-    // Set up the play button
-    const playButton = document.getElementById('playButton');
-        playButton.addEventListener('click', () => {
-          // Start the audio playback when the user clicks the play button
-          audioContext.resume().then(() => {
-            source.start();
-            // Start analyzing the audio after playback begins
-            analyzeAudio(audioBuffer);
-            playButton.disabled = true; // Disable button after it's clicked
-          });
-        });
+      .then(buffer => {
+        audioBuffer = buffer; // Store the decoded audio buffer
       })
       .catch(error => {
         console.error('Error loading or decoding the audio file', error);
       });
 
+    // Set up the play button
+  // Set up the play button
+const playButton = document.getElementById('playButton');
+playButton.addEventListener('click', () => {
+  if (!audioBuffer) return; // Ensure audio is loaded
+
+  // Create a new source each time to allow replay
+  const source = audioContext.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(analyser);
+  analyser.connect(audioContext.destination);
+
+  audioContext.resume().then(() => {
+    source.start(); // Start playback without .catch
+    analyzeAudio();
+    playButton.disabled = true; // Disable button after it's clicked
+  });
+});
+
+
     // Function to analyze audio data
-    function analyzeAudio(audioBuffer) {
+    function analyzeAudio() {
       const frequencyData = new Uint8Array(bufferLength);
       const timeDomainData = new Uint8Array(bufferLength);
       const timeStamps = [];
@@ -78,16 +83,16 @@
         const dynamicRange = calculateDynamicRange(timeDomainData);
         const bpm = detectBPM(timeDomainData, timeStamps);
         const singingStatus = detectSinging(frequencyData);
-        
-
 
         // Display data dynamically
         displayData(volume, peakFrequency, bpm, transients, dynamicRange, singingStatus);
 
         // Visualize frequency data
         visualizeFrequency(frequencyData);
-      }
 
+        // Send singing status to server if it has changed
+        postSingingState(singingStatus);
+      }
 
       // Function to visualize frequency data on the canvas
       function visualizeFrequency(frequencyData) {
@@ -154,12 +159,10 @@
       }
 
       // Detect BPM
-          // Detect BPM (Using the time-domain signal and peak detection)
-          function detectBPM(timeDomainData, timeStamps) {
-        const threshold = 150; // Adjust this threshold based on your audio
+      function detectBPM(timeDomainData, timeStamps) {
+        const threshold = 150; 
         const peakIntervals = [];
 
-        // Detect peaks in the time-domain signal (find sharp changes)
         for (let i = 1; i < timeDomainData.length; i++) {
           if (timeDomainData[i] > threshold && timeDomainData[i - 1] <= threshold) {
             const currentTime = audioContext.currentTime;
@@ -167,53 +170,68 @@
           }
         }
 
-        // Calculate the intervals between detected peaks
         if (timeStamps.length > 1) {
           for (let i = 1; i < timeStamps.length; i++) {
             peakIntervals.push(timeStamps[i] - timeStamps[i - 1]);
           }
 
-          // Calculate the average interval in seconds
           const averageInterval = peakIntervals.reduce((a, b) => a + b) / peakIntervals.length;
-
-          // Convert the interval to BPM (beats per minute)
-          const bpm = Math.round(60 / averageInterval);
-          return bpm;
+          return Math.round(60 / averageInterval);
         }
 
-        return 0; // Return 0 if no peaks detected
+        return 0; 
       }
 
-      // Detect Singing vs Non-Singing (based on harmonic content)
-      function detectSinging(frequencyData) {
-        const harmonicThreshold = 50; // Tune this threshold as needed
+      let lastSingingStatus = 'Non-singing';  // Initial state
 
-        for (let i = 0; i < frequencyData.length; i++) {
-          if (frequencyData[i] > harmonicThreshold) {
-            return 'Singing';
-          }
-        }
-        return 'Non-Singing';
-      }
+function detectSinging(frequencyData) {
+  const harmonicThreshold = 50;
+  let state = 'Non-singing';  // Default state
 
-      
-       // Function to post the singing state to the server
-       function postSingingState(state) {
-        fetch('http://localhost:3000/singing', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ state: state })
-        })
-        .then(response => response.json())
-        .then(data => {
-          console.log('Singing state updated:', data);
-        })
-        .catch(error => {
-          console.error('Error updating singing state:', error);
-        });
+  // Determine the current state based on frequency data
+  for (let i = 0; i < frequencyData.length; i++) {
+    if (frequencyData[i] > harmonicThreshold) {
+      state = 'singing';
+      break;
+    }
+  }
+
+  console.log("Detected state:", state);  // Log detected state for verification
+  postSingingState(state);  // Call postSingingState with the detected state
+  return state;
+}
+
+function postSingingState(state) {
+  console.log("Checking if state has changed. Last state:", lastSingingStatus, "Current state:", state);
+
+  if (state !== lastSingingStatus) {
+    console.log("State has changed. Posting to server...");  // Log only when a state change is detected
+    lastSingingStatus = state;  // Update last known state
+
+    fetch('http://localhost:3000/singing', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ state: state })
+    })
+    .then(response => {
+      if (!response.ok) {
+        return response.json().then(err => { throw new Error(err.message); });
       }
+      return response.json();
+    })
+    .then(data => {
+      console.log('Singing state updated:', data);
+    })
+    .catch(error => {
+      console.error('Error updating singing state:', error);
+    });
+  } else {
+    console.log("State has not changed. No post required.");
+  }
+}
+
 
       // Display extracted data
       function displayData(volume, peakFrequency, bpm, transients, dynamicRange, singingStatus) {
@@ -224,7 +242,6 @@
         document.getElementById('dynamicRangeDisplay').innerText = `Dynamic Range: ${dynamicRange.toFixed(2)}`;
         document.getElementById('singingStatus').innerText = `Status: ${singingStatus}`;
       }
-    
 
       // Continuously analyze and visualize data
       function draw() {
@@ -234,8 +251,18 @@
 
       draw();
     }
+
+    // Fetch singing status from server every 5 seconds
+    function fetchSingingState() {
+      fetch('http://localhost:3000/singing')
+        .then(response => response.text())
+        .then(state => {
+          document.getElementById('singingStatus').innerText = `Server Singing Status: ${state}`;
+        })
+        .catch(error => console.error('Error fetching singing state:', error));
+    }
+
+    setInterval(fetchSingingState, 5000);
   </script>
-
-
 </body>
 </html>

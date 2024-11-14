@@ -36,7 +36,7 @@ app.get('/singing', (req, res) => {
 app.post('/singing', (req, res) => {
 console.log('Recieved singing state:', req.body);
 if (req.body.state === "singing" || req.body.state === "not singing") {
-    singingState = state;
+    singingState = req.body.state;
     console.log("Recieved singing state:", state);
     res.send({message:'singing state upated to: ${singingState}'});
 }else{
