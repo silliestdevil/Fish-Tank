@@ -191,18 +191,20 @@ function detectSinging(frequencyData) {
   // Determine the current state based on frequency data
   for (let i = 0; i < frequencyData.length; i++) {
     if (frequencyData[i] > harmonicThreshold) {
-      state = 'singing';
+      state = 'singing'; //If frequency data is above the harmonic threshold then singing has started 
       break;
+    } else {
+      state = 'Non-singing'; //if its not the state is that its not singing 
     }
   }
 
   console.log("Detected state:", state);  // Log detected state for verification
   postSingingState(state);  // Call postSingingState with the detected state
-  return state;
+  return state; 
 }
 
 function postSingingState(state) {
-  console.log("Checking if state has changed. Last state:", lastSingingStatus, "Current state:", state);
+  console.log("Current state:", state); // console log the current state to see if its being checked
 
   if (state !== lastSingingStatus) {
     console.log("State has changed. Posting to server...");  // Log only when a state change is detected
@@ -213,11 +215,11 @@ function postSingingState(state) {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ state: state })
+      body: JSON.stringify({ state: state }) // post the state to the server 
     })
     .then(response => {
       if (!response.ok) {
-        return response.json().then(err => { throw new Error(err.message); });
+        return response.json().then(err => { throw new Error(err.message); });  // if re
       }
       return response.json();
     })

@@ -432,8 +432,8 @@ class FishDemo extends game.Game {
         const boundaryMin = new THREE.Vector3(-200, 5, -200);
         const boundaryMax = new THREE.Vector3(200, 100, 200);
     
-        // Set up animations if available
-        this._setUpAnimations(gltf);
+        // // Set up animations if available
+        // this._setUpAnimations(gltf);
       } else {
         console.error('Failed to load the model!');
       }
@@ -504,20 +504,20 @@ class FishDemo extends game.Game {
     }
   }
   
-    // Set up animations for the loaded GLTF model
-    _setUpAnimations(gltf) {
-      if (gltf.animations && gltf.animations.length > 0) {
-        const mixer = new THREE.AnimationMixer(gltf.scene);
+    // // Set up animations for the loaded GLTF model
+    // _setUpAnimations(gltf) {
+    //   if (gltf.animations && gltf.animations.length > 0) {
+    //     const mixer = new THREE.AnimationMixer(gltf.scene);
       
-        //play all Animations in the GTLF model
-        gltf.animations.forEach((clip) => {
-          mixer.clipAction(clip).play();
-        });
-        this._mixer = mixer; //store the mixer for later use
-      } else {
-        console.log("No animations found in the GLTF model.");
-      } // currently no animation but no error code
-    }
+    //     //play all Animations in the GTLF model
+    //     gltf.animations.forEach((clip) => {
+    //       mixer.clipAction(clip).play();
+    //     });
+    //     this._mixer = mixer; //store the mixer for later use
+    //   } else {
+    //     console.log("No animations found in the GLTF model.");
+    //   } // currently no animation but no error code
+    // }
 
     // Step function to update the simulation each frame
   _OnStep(timeInSeconds) {
@@ -562,6 +562,8 @@ class FishDemo extends game.Game {
      //update each boid in the scene by calling its step function 
      // which applies the boid behaviours based on current step time
  // Final part of _OnStep to update each boid and handle animations
+
+ 
 for (let e of this._entities) {
   e.Step(timeInSeconds);
 }
@@ -571,6 +573,35 @@ for (let e of this._entities) {
   }
 }
 
+function getSingingState() {
+  fetch('http://localhost:3000/singing', {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  })
+    .then(response => {
+      if (!response.ok) {
+        // Handle non-OK responses and extract error details
+        return response.json().then(err => { 
+          throw new Error(err.message); 
+        });
+      }
+      return response.text(); // Expecting plain text response
+    })
+    .then(singingState => {
+      // Log the current singing state
+      console.log('Current Singing State:', singingState);
+    })
+    .catch(error => {
+      // Log any errors encountered
+      console.error('Error fetching singing state:', error);
+    });
+}
+
+// Call the function to fetch the singing state
+setInterval(getSingingState, 5000);
+ 
 //Main entry point for the application
 function _Main() {
   //Create an instance of Fish DEmo, this set up simulation
@@ -578,3 +609,12 @@ function _Main() {
 }
 //start simulation by calling the main function 
 _Main();
+
+
+
+//THINGS TO DO: 
+
+//Implement the singingState to the starting position - for the fish to rise to this position only when singing begins 
+
+//Add a predator fish that moves in circular movements/ a spiral going higher using on variable and lower using another
+//get the fish to follow this as a target 
