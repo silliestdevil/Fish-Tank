@@ -385,51 +385,79 @@ class Boid {
     return forceVector;
   }}
 
-  function getPeakFreq() {
-    fetch('http://localhost:3000/peakFreq', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
-      .then(response => {
-        if (!response.ok) {
-          // Handle non-OK responses and extract error details
-          return response.json().then(err => { 
-            throw new Error(err.message); 
-          });
-        }
-        return response.text(); // Expecting plain text response
-      })
-      .then(peakFreqState => {
-        // Log the current singing state
-        console.log('Peak Frequency:', peakFreqState);
-      })
-      .catch(error => {
-        // Log any errors encountered
-        console.error('Error fetching peak frequency:', error);
-      });
-  }
-  // Call the function to fetch the singing state
-  setInterval(getPeakFreq, 5);
+   
 
   class Target {
     constructor(initialPosition, game) {
       this.position = initialPosition.clone();
       this.angle = 0; // Angle for the spiral movement
-      this.radius = 20; // Radius of the spiral
+      this.radius = 1; // Default radius, fallback value
       this.angularSpeed = 1; // Speed of rotation
       this.verticalSpeed = 5; // Vertical rise speed
       this.game = game;
-  
+    
       // Optional debug sphere
       const geometry = new THREE.SphereGeometry(1, 16, 16);
       const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
       this.debugMesh = new THREE.Mesh(geometry, material);
       this.game._graphics.Scene.add(this.debugMesh);
+  
+      // Fetch the peak frequency every second
+      this.startFetchingPeakFreq();
+  
+      // Update position every frame (roughly 60 FPS)
+      setInterval(() => this.updatePosition(), 1000 / 60); // 60 FPS
     }
   
-    UpdatePosition(deltaTime) {
+    async getPeakFreq() {
+      try {
+        const response = await fetch('http://localhost:3000/peakFreq', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+    
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.message);
+        }
+    
+        // Parse JSON response
+        const responseData = await response.json(); // Parse JSON object
+        console.log('Parsed server response:', responseData);
+    
+        const peakFreqState = responseData.peakFrequency; // Extract the peakFrequency field
+        console.log('Extracted peak frequency:', peakFreqState);
+    
+        const newRadius = parseFloat(peakFreqState); // Convert to number if necessary
+        if (!isNaN(newRadius) && newRadius > 0) {
+          this.radius = newRadius;
+          console.log('Radius updated to:', this.radius);
+        } else {
+          console.warn(`Invalid radius received: "${peakFreqState}", using default:`, this.radius);
+        }
+      } catch (error) {
+        console.error('Error fetching peak frequency:', error);
+      }
+    }
+    
+
+  
+  
+    startFetchingPeakFreq() {
+      // Call `getPeakFreq` every second
+      setInterval(() => {
+        this.getPeakFreq();
+      }, 1000);
+    }
+  
+    updatePosition(deltaTime = 0.016) {
+      if (isNaN(this.radius) || this.radius <= 0) {
+        console.warn('Invalid radius, skipping update');
+        return; // Skip update if radius is not valid
+      }
+  
       // Increment angle based on angular speed
       this.angle += this.angularSpeed * deltaTime;
   
@@ -437,6 +465,12 @@ class Boid {
       const x = this.radius * Math.cos(this.angle);
       const z = this.radius * Math.sin(this.angle);
       const y = this.verticalSpeed * this.angle;
+  
+      // Ensure position is within reasonable bounds
+      if (isNaN(x) || isNaN(y) || isNaN(z)) {
+        console.error('Invalid position calculated:', { x, y, z });
+        return;
+      }
   
       // Update the target's position
       this.position.set(x, y % 120, z); // Wrap around the height for bounded spirals
@@ -586,8 +620,7 @@ class FishDemo extends game.Game {
 
     // Step function to update the simulation each frame
   _OnStep(timeInSeconds) {
-
-    this.target.UpdatePosition(timeInSeconds);
+ 
     //Limit the time step to a maximum value for stability, preventing jumps in time
     timeInSeconds = Math.min(timeInSeconds, 1 / 10.0);
 

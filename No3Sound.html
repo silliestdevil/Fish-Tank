@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audio File Analysis</title>
+</head>
+<body>
+  <h1>Audio File Analysis</h1>
+  <canvas id="canvas" width="800" height="200"></canvas>
+
+  <p id="volumeDisplay"></p>
+  <p id="peakFrequencyDisplay"></p>
+  <p id="bpmDisplay"></p>
+  <p id="transientDisplay"></p>  
+  <p id="dynamicRangeDisplay"></p>  
+  <p id="singingStatus"></p>
+
+  <button id="playButton">Play Audio</button>
+
+  <script>
+    // Web Audio API setup
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048; // Size of the FFT (Fast Fourier Transform)
+    const bufferLength = analyser.frequencyBinCount; // Number of frequency bins
+
+    // Canvas for visualization
+    const canvas = document.getElementById('canvas');
+    const canvasCtx = canvas.getContext('2d');
+
+    let lastSingingStatus = null;
+    let audioBuffer; // Store audio buffer for replay
+
+    // Load audio file directly (replace with your audio file's path)
+    const audioFile = 'resources/voiceA.mp3';  // Path to your audio file
+
+    // Fetch and decode the audio file
+    fetch(audioFile)
+      .then(response => response.arrayBuffer())
+      .then(data => audioContext.decodeAudioData(data))
+      .then(buffer => {
+        audioBuffer = buffer; // Store the decoded audio buffer
+      })
+      .catch(error => {
+        console.error('Error loading or decoding the audio file', error);
+      });
+
+    // Set up the play button
+  // Set up the play button
+const playButton = document.getElementById('playButton');
+playButton.addEventListener('click', () => {
+  if (!audioBuffer) return; // Ensure audio is loaded
+
+  // Create a new source each time to allow replay
+  const source = audioContext.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(analyser);
+  analyser.connect(audioContext.destination);
+
+  audioContext.resume().then(() => {
+    source.start(); // Start playback without .catch
+    analyzeAudio();
+    playButton.disabled = true; // Disable button after it's clicked
+  });
+});
+
+
+    // Function to analyze audio data
+    function analyzeAudio() {
+      const frequencyData = new Uint8Array(bufferLength);
+      const timeDomainData = new Uint8Array(bufferLength);
+      const timeStamps = [];
+
+      // Function to extract and analyze data
+      function extractData() {
+        analyser.getByteFrequencyData(frequencyData);
+        analyser.getByteTimeDomainData(timeDomainData);
+
+        const volume = calculateRMS(timeDomainData);
+        const peakFrequency = findPeakFrequency(frequencyData);
+        const transients = detectTransients(timeDomainData); 
+        const dynamicRange = calculateDynamicRange(timeDomainData);
+        const bpm = detectBPM(timeDomainData, timeStamps);
+        const singingStatus = detectSinging(frequencyData);
+
+        // Display data dynamically
+        displayData(volume, peakFrequency, bpm, transients, dynamicRange, singingStatus);
+
+        // Visualize frequency data
+        visualizeFrequency(frequencyData);
+
+        // Send singing status to server if it has changed
+        postSingingState(singingStatus);
+      }
+
+      // Function to visualize frequency data on the canvas
+      function visualizeFrequency(frequencyData) {
+        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+        const barWidth = (canvas.width / bufferLength) * 2.5;
+        let barHeight;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          barHeight = frequencyData[i];
+          canvasCtx.fillStyle = `rgb(${barHeight + 100}, 50, 50)`;
+          canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+          x += barWidth + 1;
+        }
+      }
+
+      // Calculate RMS (Root Mean Square) volume
+      function calculateRMS(timeDomainData) {
+        let sum = 0;
+        for (let i = 0; i < timeDomainData.length; i++) {
+          sum += Math.pow(timeDomainData[i] - 128, 2); // 128 is the zero point
+        }
+        return Math.sqrt(sum / timeDomainData.length);
+      }
+
+      
+      // Find peak frequency (highest amplitude in frequency data)
+      function findPeakFrequency(frequencyData) {
+        let maxAmplitude = 0;
+        let peakFreqIndex = 0;
+
+        for (let i = 0; i < frequencyData.length; i++) {
+          if (frequencyData[i] > maxAmplitude) {
+            maxAmplitude = frequencyData[i];
+            peakFreqIndex = i;
+          }
+        }
+
+        const nyquist = audioContext.sampleRate / 2;
+        const peakFrequency = (peakFreqIndex / bufferLength) * nyquist /100;
+        const roundedPeakFreq = Math.round(peakFrequency);
+      
+        postPeakFreq(roundedPeakFreq); 
+        return roundedPeakFreq
+      }
+
+     
+     
+
+      function postPeakFreq(peakFrequency) {
+  console.log("Current Peak Frequency", peakFrequency); // console log the current state to see if its being checked
+ 
+    fetch('http://localhost:3000/peakFreq', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ peakFrequency }) // post the state to the server 
+    })
+    .then(response => {
+      if (!response.ok) {
+        return response.json().then(err => { throw new Error(err.message); });  // if re
+      }
+      return response.json();
+    })
+    .then(data => {
+      console.log('Peak Frequency updated:', data);
+    })
+    .catch(error => {
+      console.error('Error updating peak frequency:', error);
+    });
+}
+
+
+
+      function detectTransients(timeDomainData) {
+        let zeroCrossings = 0;
+        for (let i = 1; i < timeDomainData.length; i++) {
+          if ((timeDomainData[i - 1] < 128 && timeDomainData[i] >= 128) || (timeDomainData[i - 1] >= 128 && timeDomainData[i] < 128)) {
+            zeroCrossings++;
+          }
+        }
+        return zeroCrossings;
+      }
+
+      // Calculate Dynamic Range
+      function calculateDynamicRange(timeDomainData) {
+        let peak = 0;
+        let rms = 0;
+
+        for (let i = 0; i < timeDomainData.length; i++) {
+          rms += Math.pow(timeDomainData[i] - 128, 2);
+          peak = Math.max(peak, timeDomainData[i]);
+        }
+        rms = Math.sqrt(rms / timeDomainData.length);
+
+        return peak - rms;
+      }
+
+      // Detect BPM
+      function detectBPM(timeDomainData, timeStamps) {
+        const threshold = 150; 
+        const peakIntervals = [];
+
+        for (let i = 1; i < timeDomainData.length; i++) {
+          if (timeDomainData[i] > threshold && timeDomainData[i - 1] <= threshold) {
+            const currentTime = audioContext.currentTime;
+            timeStamps.push(currentTime);
+          }
+        }
+
+        if (timeStamps.length > 1) {
+          for (let i = 1; i < timeStamps.length; i++) {
+            peakIntervals.push(timeStamps[i] - timeStamps[i - 1]);
+          }
+
+          const averageInterval = peakIntervals.reduce((a, b) => a + b) / peakIntervals.length;
+          return Math.round(60 / averageInterval);
+        }
+
+        return 0; 
+      }
+
+      let lastSingingStatus = 'Non-singing';  // Initial state
+
+function detectSinging(frequencyData) {
+  const harmonicThreshold = 50;
+  let state = 'Non-singing';  // Default state
+
+  // Determine the current state based on frequency data
+  for (let i = 0; i < frequencyData.length; i++) {
+    if (frequencyData[i] > harmonicThreshold) {
+      state = 'singing'; //If frequency data is above the harmonic threshold then singing has started 
+      break;
+    } else {
+      state = 'Non-singing'; //if its not the state is that its not singing 
+    }
+  }
+
+  console.log("Detected state:", state);  // Log detected state for verification
+  postSingingState(state);  // Call postSingingState with the detected state
+  return state; 
+}
+
+function postSingingState(state) {
+  console.log("Current state:", state); // console log the current state to see if its being checked
+
+  if (state !== lastSingingStatus) {
+    console.log("State has changed. Posting to server...");  // Log only when a state change is detected
+    lastSingingStatus = state;  // Update last known state
+
+    fetch('http://localhost:3000/singing', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ state: state }) // post the state to the server 
+    })
+    .then(response => {
+      if (!response.ok) {
+        return response.json().then(err => { throw new Error(err.message); });  // if re
+      }
+      return response.json();
+    })
+    .then(data => {
+      console.log('Singing state updated:', data);
+    })
+    .catch(error => {
+      console.error('Error updating singing state:', error);
+    });
+  } else {
+    console.log("State has not changed. No post required.");
+  }
+}
+
+
+      // Display extracted data
+      function displayData(volume, peakFrequency, bpm, transients, dynamicRange, singingStatus) {
+        document.getElementById('volumeDisplay').innerText = `Volume: ${volume.toFixed(2)}`;
+        document.getElementById('peakFrequencyDisplay').innerText = `Peak Frequency: ${peakFrequency.toFixed(2)} Hz`;
+        document.getElementById('bpmDisplay').innerText = `BPM: ${bpm}`;
+        document.getElementById('transientDisplay').innerText = `Transients: ${transients}`;
+        document.getElementById('dynamicRangeDisplay').innerText = `Dynamic Range: ${dynamicRange.toFixed(2)}`;
+        document.getElementById('singingStatus').innerText = `Status: ${singingStatus}`;
+      }
+
+      // Continuously analyze and visualize data
+      function draw() {
+        requestAnimationFrame(draw);
+        extractData();
+      }
+
+      draw();
+    }
+
+    // Fetch singing status from server every 5 seconds
+    function fetchSingingState() {
+      fetch('http://localhost:3000/singing')
+        .then(response => response.text())
+        .then(state => {
+          document.getElementById('singingStatus').innerText = `Server Singing Status: ${state}`;
+        })
+        .catch(error => console.error('Error fetching singing state:', error));
+    }
+
+    setInterval(fetchSingingState, 5000);
+  </script>
+</body>
+</html>
