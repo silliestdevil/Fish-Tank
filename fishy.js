@@ -21,41 +21,7 @@ const _BOID_FORCE_ALIGNMENT = 10; //Force for alignment with nearby boids
 const _BOID_FORCE_SEPARATION = 20; //Force to seperate from other boids
 const _BOID_FORCE_COHESION = 10; //Force to group with nearby boids
 const _BOID_FORCE_WANDER = 3; // Force to make boids wander around
-
-// Class to render lines between boids and other points 
-// class LineRenderer {
-//   constructor(game) {
-//     this._game = game;
-
-//     this._materials = {};
-//     this._group = new THREE.Group();
-
-//     this._game._graphics.Scene.add(this._group); //add this group to scene
-//   }
-
-//   Reset() {
-//     this._lines = [];
-//     this._group.remove(...this._group.children); //remove all lines from group
-//   }
-
-//   Add(pt1, pt2, hexColour) {
-//     const geometry = new THREE.Geometry();
-//     geometry.vertices.push(pt1);
-//     geometry.vertices.push(pt2);
-
-//     let material = this._materials[hexColour];
-//     if (!material) {
-//       this._materials[hexColour] = new THREE.LineBasicMaterial(
-//           {color: hexColour});
-//       material = this._materials[hexColour];
-//     }
-
-//     const line = new THREE.Line(geometry, material);
-//     this._lines.push(line);
-//     this._group.add(line);
-//   }
-// }
-
+ 
 //Boid class for each fish in the simulation 
 class Boid {
 
@@ -91,7 +57,7 @@ class Boid {
     this._maxSpeed  = params.speed * speedMultiplier;  
     this._acceleration = params.acceleration * speedMultiplier;  
 
-    const scale = 4.0 / speedMultiplier;
+    const scale = 6.0 / speedMultiplier;
     this._radius = scale;
     this._mesh.scale.setScalar(scale); //Scale the mesh
     this._mesh.rotateX(-Math.PI / 2); //Rotate mesh to face correct direction 
@@ -279,9 +245,9 @@ class Boid {
     let force = new THREE.Vector3(0, 0, 0);
 
     if (p.y < 10) {
-      force = new THREE.Vector3(0, 10 - p.y, 0);
+      force = new THREE.Vector3(0,0 , 0);
     } else if (p.y > 30) {
-      force = new THREE.Vector3(0, p.y - 50, 0);
+      force = new THREE.Vector3(0, 0, 0);
     }
     return force.multiplyScalar(_BOID_FORCE_SEPARATION);
   }
@@ -371,22 +337,17 @@ class Boid {
     return directionToAveragePosition;
   }
 //Apply seek force to move towards a target (destination)
-  _ApplySeek(destination) {
-    const distance = Math.max(0,((
-      //calculate the distance to the target and scale it 
-        this.Position.distanceTo(destination) - 50) / 250)) ** 2;
-        //calculate direction toward the destination 
-    const direction = destination.clone().sub(this.Position);
-    direction.normalize();
+_ApplySeek(destination) {
+  const direction = destination.clone().sub(this.Position); // Direction to the target
+  const distance = Math.max(0, (direction.length() - 50) / 250) ** 2; // Scaled distance factor
 
-    //apply force toward the destination based on distance
-    const forceVector = direction.multiplyScalar(
-        _BOID_FORCE_ORIGIN * distance);
-    return forceVector;
-  }}
-
-   
-
+  direction.normalize();
+  const forceVector = direction.multiplyScalar(
+      Math.max(_BOID_FORCE_ORIGIN * distance, 100.0)); // Ensure minimum force
+  
+  return forceVector;
+}
+}
   class Target {
     constructor(initialPosition, game) {
       this.position = initialPosition.clone();
@@ -449,7 +410,7 @@ class Boid {
       // Call `getPeakFreq` every second
       setInterval(() => {
         this.getPeakFreq();
-      }, 1000);
+      }, 100);
     }
   
     updatePosition(deltaTime = 0.016) {
@@ -500,10 +461,10 @@ class FishDemo extends game.Game {
     //load background texture image
     this._LoadBackground();
 
-
+    
  
     //Load fish GTFL model using Three.js loader
-    loader.load('./resources/fish.glb', (gltf) => {
+    loader.load('./resources/fish21.glb', (gltf) => {
       if (gltf && gltf.scene) {
         console.log('GLTF model loaded');
        
@@ -528,8 +489,8 @@ class FishDemo extends game.Game {
           console.error('No material found in the fish mesh.');
         }
 
-        const boundaryMin = new THREE.Vector3(-200, 5, -200);
-        const boundaryMax = new THREE.Vector3(200, 200, 200);
+        const boundaryMin = new THREE.Vector3(-400, 5, -400);
+        const boundaryMax = new THREE.Vector3(400, 300, 400);
     
         // // Set up animations if available
         // this._setUpAnimations(gltf);
@@ -546,6 +507,8 @@ class FishDemo extends game.Game {
       // Set up fixed camera (e.g., 50 units above the origin, facing down)
   this._graphics._camera.position.set(200, 0, 10); // Set camera position at a fixed height above the origin
   this._graphics._camera.lookAt(new THREE.Vector3(0, 100, 0)); // Look at the origin
+
+  
   }
 
   //;pad background texture (underwater scene)
@@ -564,7 +527,7 @@ class FishDemo extends game.Game {
         new THREE.MeshStandardMaterial({
             color: 0x837860, //set colour etc
             transparent: true,
-            opacity: 0 ,
+            opacity: 0.2 ,
         }));
     plane.position.set(0, -5, 0); //postion plane
     plane.castShadow = false; // Disable shadow casting 
@@ -601,22 +564,12 @@ class FishDemo extends game.Game {
       const e = new Boid(this, params); //create boid entity 
       this._entities.push(e); // add it to the entity list
     }
+
+    const light = new THREE.PointLight(0x00ffff, 5, 50); // Cyan light, intensity 1, max distance 10
+    light.position.set(0, 0, 2); // Center the light on the fish
+    this._mesh.add(light); // Attach the light to the fish mesh
   }
-  
-    // // Set up animations for the loaded GLTF model
-    // _setUpAnimations(gltf) {
-    //   if (gltf.animations && gltf.animations.length > 0) {
-    //     const mixer = new THREE.AnimationMixer(gltf.scene);
-      
-    //     //play all Animations in the GTLF model
-    //     gltf.animations.forEach((clip) => {
-    //       mixer.clipAction(clip).play();
-    //     });
-    //     this._mixer = mixer; //store the mixer for later use
-    //   } else {
-    //     console.log("No animations found in the GLTF model.");
-    //   } // currently no animation but no error code
-    // }
+   
 
     // Step function to update the simulation each frame
   _OnStep(timeInSeconds) {
@@ -627,42 +580,7 @@ class FishDemo extends game.Game {
     if (this._entities.length == 0) { //if there are no entities in the scene skip further calculation 
       return;
     }
-
-
-    //Camera that follows the lead entitys direction
-
-    // //Clone positionb of the first entitiy (boid) as the "eye" position
-    // const eye = this._entities[0].Position.clone();
-
-    // // get the direction of the first boid and scale it to set camera distance 
-    // const dir = this._entities[0].Direction.clone();
-    // dir.multiplyScalar(5); // Move 5 units back in the direction of the boid
-    //  eye.sub(dir); // Position camera 5 units behind the lead boid
-    
-    //  // create a matrix to control the look-at direction of the camera
-    // const m = new THREE.Matrix4();
-    //   m.lookAt(eye, this._entities[0].Position, new THREE.Vector3(0, 1, 0));
-    
-    //   //set up a quaternion to rotate the camera for better view orientation
-    //  const q = new THREE.Quaternion();
-    //  q.setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0)); //rotate 90 degrees
-     
-     //smoothly adjust camera postion and orientation to follow the boid
-    //  const oldPosition = this._graphics._camera.position;
-    //  this._graphics._camera.position.lerp(eye, 0.05); //interpolate camera position
-    //  this._graphics._camera.quaternion.copy(this._entities[0]._group.quaternion);
-    //  this._graphics._camera.quaternion.multiply(q);
-     //Optionally, the quaternion rotation could be further adjusted:
-     //this._graphics._camera.quaternion.multiply(q);
-
-     //disable camera controls to lock the view to the boid-following camera
-    //  this._controls.enabled = false;
-
-
-     //update each boid in the scene by calling its step function 
-     // which applies the boid behaviours based on current step time
- // Final part of _OnStep to update each boid and handle animations
-
+ 
  
 for (let e of this._entities) {
   e.Step(timeInSeconds);

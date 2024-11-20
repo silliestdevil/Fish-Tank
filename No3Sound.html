@@ -32,6 +32,9 @@
     let lastSingingStatus = null;
     let audioBuffer; // Store audio buffer for replay
 
+    let rmsValues = []; // To store RMS values for the current second
+let lastTimestamp = performance.now(); // To track when a second has elapsed
+ 
     // Load audio file directly (replace with your audio file's path)
     const audioFile = 'resources/voiceA.mp3';  // Path to your audio file
 
@@ -109,14 +112,45 @@ playButton.addEventListener('click', () => {
         }
       }
 
-      // Calculate RMS (Root Mean Square) volume
-      function calculateRMS(timeDomainData) {
-        let sum = 0;
-        for (let i = 0; i < timeDomainData.length; i++) {
-          sum += Math.pow(timeDomainData[i] - 128, 2); // 128 is the zero point
-        }
-        return Math.sqrt(sum / timeDomainData.length);
-      }
+  
+// Function to calculate RMS
+function calculateRMS(timeDomainData) {
+  let sum = 0;
+  for (let i = 0; i < timeDomainData.length; i++) {
+    sum += Math.pow(timeDomainData[i] - 128, 2); // Assuming 8-bit audio (zero point is 128)
+  }
+  return Math.sqrt(sum / timeDomainData.length);
+ 
+  processAudio(timeDomainData)
+}
+
+// Function to process audio frames
+function processAudio(timeDomainData) {
+  const currentTimestamp = performance.now();
+  const rms = calculateRMS(timeDomainData);
+  rmsValues.push(rms);
+
+  // Check if a second has elapsed
+  if (currentTimestamp - lastTimestamp >= 100) {
+    // Calculate the average RMS for the past second
+    const averageRMS = rmsValues.reduce((sum, value) => sum + value, 0) / rmsValues.length;
+    console.log('Average RMS for the last second:', averageRMS);
+
+    // Reset for the next second
+    rmsValues = [];
+    lastTimestamp = currentTimestamp;
+
+    return averageRMS;
+  }
+}
+
+// Simulate audio processing loop
+setInterval(() => {
+  // Simulate `timeDomainData` from an analyzer (e.g., Uint8Array with audio data)
+  const timeDomainData = new Uint8Array(1024).map(() => Math.random() * 256);
+  processAudio(timeDomainData);
+}, 50); // Process every 50ms or as per your audio frame rate
+
 
       
       // Find peak frequency (highest amplitude in frequency data)
@@ -132,7 +166,7 @@ playButton.addEventListener('click', () => {
         }
 
         const nyquist = audioContext.sampleRate / 2;
-        const peakFrequency = (peakFreqIndex / bufferLength) * nyquist /100;
+        const peakFrequency = (peakFreqIndex / bufferLength) * nyquist ;
         const roundedPeakFreq = Math.round(peakFrequency);
       
         postPeakFreq(roundedPeakFreq); 
@@ -241,7 +275,7 @@ function postSingingState(state) {
   console.log("Current state:", state); // console log the current state to see if its being checked
 
   if (state !== lastSingingStatus) {
-    console.log("State has changed. Posting to server...");  // Log only when a state change is detected
+    
     lastSingingStatus = state;  // Update last known state
 
     fetch('http://localhost:3000/singing', {
