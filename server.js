@@ -3,8 +3,9 @@ const bodyParser = require('body-parser');
 const app = express()
  
 let peakFreqState = 0; 
-
+let volState = 0;
 let singingState = "not singing";
+
 app.use(bodyParser.json());
 app.use(function(req, res, next) {
   res.header("Access-Control-Allow-Origin", "*");
@@ -12,10 +13,27 @@ app.use(function(req, res, next) {
   res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
   next();
 });
+
+// Handle POST /peakFreq to update the peak frequency
+app.post('/vol', (req, res) => {
+    
+    if (req.body.vol && typeof req.body.vol === 'number') {
+        volState = req.body.vol; // Update the peak frequency state
+        console.log("Updated vol:", volState);
+        res.send({ message: `vol updated to: ${volState}` });
+    } else {
+        res.status(400).send({ message: "Invalid peak frequency. Please send a number." });
+    }
+});
+
+// Handle GET /peakFreq to get the current peak frequency
+app.get('/vol', (req, res) => {
+    res.json({ volState }); // Send the current peak frequency
+});
  
 // Handle POST /peakFreq to update the peak frequency
 app.post('/peakFreq', (req, res) => {
-    console.log('Received peak frequency:', req.body);
+   
     if (req.body.peakFrequency && typeof req.body.peakFrequency === 'number') {
         peakFreqState = req.body.peakFrequency; // Update the peak frequency state
         console.log("Updated peak frequency:", peakFreqState);

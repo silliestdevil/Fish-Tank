@@ -12,8 +12,7 @@ const loader = new GLTFLoader(); // Now you can use GLTFLoader
 // Variables for boid simulation and general permeters
 let _APP = null;
 
-const _NUM_BOIDS = 350; //Number of boids
-const _BOID_SPEED = 2.5; //Speed of boids
+const _BOID_SPEED = 10; //Speed of boids
 const _BOID_ACCELERATION = _BOID_SPEED / 5.0; //Acceleration rate of boids
 const _BOID_FORCE_MAX = _BOID_ACCELERATION / 10.0; //Maximum steering force
 const _BOID_FORCE_ORIGIN = 8; //Force applied to boids to move towards origin
@@ -57,7 +56,7 @@ class Boid {
     this._maxSpeed  = params.speed * speedMultiplier;  
     this._acceleration = params.acceleration * speedMultiplier;  
 
-    const scale = 6.0 / speedMultiplier;
+    const scale = 3.0 / speedMultiplier;
     this._radius = scale;
     this._mesh.scale.setScalar(scale); //Scale the mesh
     this._mesh.rotateX(-Math.PI / 2); //Rotate mesh to face correct direction 
@@ -348,101 +347,147 @@ _ApplySeek(destination) {
   return forceVector;
 }
 }
-  class Target {
-    constructor(initialPosition, game) {
-      this.position = initialPosition.clone();
-      this.angle = 0; // Angle for the spiral movement
-      this.radius = 1; // Default radius, fallback value
-      this.angularSpeed = 1; // Speed of rotation
-      this.verticalSpeed = 5; // Vertical rise speed
-      this.game = game;
-    
-      // Optional debug sphere
-      const geometry = new THREE.SphereGeometry(1, 16, 16);
-      const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-      this.debugMesh = new THREE.Mesh(geometry, material);
-      this.game._graphics.Scene.add(this.debugMesh);
-  
-      // Fetch the peak frequency every second
-      this.startFetchingPeakFreq();
-  
-      // Update position every frame (roughly 60 FPS)
-      setInterval(() => this.updatePosition(), 1000 / 60); // 60 FPS
-    }
-  
-    async getPeakFreq() {
-      try {
-        const response = await fetch('http://localhost:3000/peakFreq', {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        });
-    
-        if (!response.ok) {
-          const err = await response.json();
-          throw new Error(err.message);
-        }
-    
-        // Parse JSON response
-        const responseData = await response.json(); // Parse JSON object
-        console.log('Parsed server response:', responseData);
-    
-        const peakFreqState = responseData.peakFrequency; // Extract the peakFrequency field
-        console.log('Extracted peak frequency:', peakFreqState);
-    
-        const newRadius = parseFloat(peakFreqState); // Convert to number if necessary
-        if (!isNaN(newRadius) && newRadius > 0) {
-          this.radius = newRadius;
-          console.log('Radius updated to:', this.radius);
-        } else {
-          console.warn(`Invalid radius received: "${peakFreqState}", using default:`, this.radius);
-        }
-      } catch (error) {
-        console.error('Error fetching peak frequency:', error);
-      }
-    }
-    
+class Target {
+  constructor(initialPosition, game) {
+    this.position = initialPosition.clone();
+    this.angle = 0; // Angle for spiral movement
+    this.radius = 1; // Default radius
+    this.angularSpeed = 1; // Speed of rotation
+    this.verticalSpeed = 5; // Vertical rise speed
+    this.game = game;
 
-  
-  
-    startFetchingPeakFreq() {
-      // Call `getPeakFreq` every second
-      setInterval(() => {
-        this.getPeakFreq();
-      }, 100);
+    // Debug sphere
+    const geometry = new THREE.SphereGeometry(1, 16, 16);
+    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    this.debugMesh = new THREE.Mesh(geometry, material);
+    this.game._graphics.Scene.add(this.debugMesh);
+
+    // Start fetching data
+    this.startFetchingPeakFreq();
+    this.startFetchingVol();
+
+    // Update position every frame (~60 FPS)
+    setInterval(() => this.updatePosition(), 1000 / 60); // 60 FPS
+  }
+
+  mapValue(value, inMin, inMax, outMin, outMax) {
+    return ((value - inMin) * (outMax - outMin)) / (inMax - inMin) + outMin;
+  }
+
+  async getPeakFreq() {
+    try {
+      const response = await fetch('http://localhost:3000/peakFreq', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message);
+      }
+
+      const responseData = await response.json();
+      const peakFreqState = parseFloat(responseData.peakFrequency);
+
+      if (!isNaN(peakFreqState) && peakFreqState > 0) {
+        this.radius = peakFreqState;
+        console.log('Radius updated to:', this.radius);
+      } else {
+        console.warn(`Invalid radius received: "${responseData.peakFrequency}", using default:`, this.radius);
+      }
+    } catch (error) {
+      console.error('Error fetching peak frequency:', error);
     }
+  }
+
+
+  async getVolState() {
+    try {
+      const response = await fetch('http://localhost:3000/vol', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
   
-    updatePosition(deltaTime = 0.016) {
-      if (isNaN(this.radius) || this.radius <= 0) {
-        console.warn('Invalid radius, skipping update');
-        return; // Skip update if radius is not valid
+      if (!response.ok) {
+        // If the response is not OK, throw the error message from the JSON body
+        const errorDetails = await response.clone().json();
+        throw new Error(errorDetails.message || "Failed to fetch volume state");
       }
   
-      // Increment angle based on angular speed
-      this.angle += this.angularSpeed * deltaTime;
+      // Parse the JSON body once
+      const responseData = await response.json();
+      console.log('Parsed server response:', responseData);
   
-      // Spiral position calculations
-      const x = this.radius * Math.cos(this.angle);
-      const z = this.radius * Math.sin(this.angle);
-      const y = this.verticalSpeed * this.angle;
-  
-      // Ensure position is within reasonable bounds
-      if (isNaN(x) || isNaN(y) || isNaN(z)) {
-        console.error('Invalid position calculated:', { x, y, z });
-        return;
+      // Extract and validate volume state
+      const volState = parseFloat(responseData.vol);
+      if (!isNaN(volState) && volState >= 0) {
+        this.verticalAmplitude = this.mapValue(volState, 40, 75, 5, 400);
+        console.log('Vertical amplitude updated to:', this.verticalAmplitude);
+      } else {
+        console.warn(`Invalid volume received: "${responseData.vol}", using default amplitude.`);
+        this.verticalAmplitude = 10; // Fallback value
       }
-  
-      // Update the target's position
-      this.position.set(x, y % 120, z); // Wrap around the height for bounded spirals
-  
-      // Update debug mesh position
-      if (this.debugMesh) {
-        this.debugMesh.position.copy(this.position);
-      }
+    } catch (error) {
+      console.error('Error fetching volume state:', error.message);
     }
   }
   
+  startFetchingVol() {
+    setInterval(() => this.getVolState(), 1000); // Fetch volume every second
+  }
+
+  startFetchingPeakFreq() {
+    setInterval(() => this.getPeakFreq(), 1000); // Fetch peak frequency every second
+  }
+
+  updatePosition(deltaTime = 0.016) {
+    // Ensure radius is valid
+    if (isNaN(this.radius) || this.radius <= 0) {
+      console.warn('Invalid radius, skipping update');
+      return; // Skip update if radius is invalid
+    }
+  
+    // Update angle for spiral movement
+    this.angle += this.angularSpeed * deltaTime;
+    if (isNaN(this.angle)) {
+      console.error("Angle is NaN; resetting to 0");
+      this.angle = 0;
+    }
+  
+    // Spiral position calculations
+    const x = this.radius * Math.cos(this.angle);
+    const z = this.radius * Math.sin(this.angle);
+  
+    // Validate vertical parameters
+    if (isNaN(this.verticalSpeed) || this.verticalSpeed <= 0) {
+      console.warn("Invalid verticalSpeed; resetting to default value");
+      this.verticalSpeed = 1;
+    }
+    if (isNaN(this.verticalAmplitude) || this.verticalAmplitude <= 0) {
+      console.warn("Invalid verticalAmplitude; resetting to default value");
+      this.verticalAmplitude = 10;
+    }
+  
+    // Calculate vertical oscillation
+    const y = Math.sin(this.angle * this.verticalSpeed) * this.verticalAmplitude;
+    if (isNaN(y)) {
+      console.error("Invalid y position calculated; skipping update", {
+        angle: this.angle,
+        verticalSpeed: this.verticalSpeed,
+        verticalAmplitude: this.verticalAmplitude,
+      });
+      return;
+    }
+  
+    // Update position
+    this.position.set(x, y, z);
+  
+    // Update debug mesh position
+    if (this.debugMesh) {
+      this.debugMesh.position.copy(this.position);
+    }
+  }
+}  
  
 //FishDemo class extends a base game class to manage the boid simulation 
 class FishDemo extends game.Game {
@@ -456,7 +501,7 @@ class FishDemo extends game.Game {
 
     this.target = new Target(new THREE.Vector3(0, 0, 0), this);
     //set background fog for the scene (creating underwater effect)
-    this._graphics.Scene.fog = new THREE.FogExp2(new THREE.Color(0x4d7dbe), 0.00);
+    this._graphics.Scene.fog = new THREE.FogExp2(new THREE.Color(0x4d7dbe), 0.002);
    
     //load background texture image
     this._LoadBackground();
@@ -464,7 +509,7 @@ class FishDemo extends game.Game {
     
  
     //Load fish GTFL model using Three.js loader
-    loader.load('./resources/fish21.glb', (gltf) => {
+    loader.load('./resources/FishLowPoly.glb', (gltf) => {
       if (gltf && gltf.scene) {
         console.log('GLTF model loaded');
        
@@ -490,7 +535,7 @@ class FishDemo extends game.Game {
         }
 
         const boundaryMin = new THREE.Vector3(-400, 5, -400);
-        const boundaryMax = new THREE.Vector3(400, 300, 400);
+        const boundaryMax = new THREE.Vector3(400, 500, 400);
     
         // // Set up animations if available
         // this._setUpAnimations(gltf);
@@ -512,10 +557,17 @@ class FishDemo extends game.Game {
   }
 
   //;pad background texture (underwater scene)
-  _LoadBackground() {
-    const loader = new THREE.TextureLoader();
-    const texture = loader.load('./resources/underwater.jpg');
-    this._graphics._scene.background = texture;
+   _LoadBackground() {
+  const loader = new THREE.TextureLoader();
+  const texture = loader.load('./resources/underwater.jpg');
+  
+   this._graphics._scene.background = texture;
+
+  // this._graphics._scene.background = new THREE.Color(0x000000);
+  // Add ambient light for soft lighting in the scene
+  const light = new THREE.AmbientLight(0x404040, 1); // (color, intensity)
+  this._graphics._scene.add(light);
+    
   }
 
   //create entities for simulation ( eg groud plane)
@@ -542,9 +594,10 @@ class FishDemo extends game.Game {
 
   }
 
+
   // create boids based on geometry and material 
   _CreateBoids(fishGeometry, fishMaterial) {
-    const NUM_BOIDS = 350;
+    const NUM_BOIDS = 250;
   
     //parameteres to control the boids behaviour
     let params = {
@@ -564,10 +617,6 @@ class FishDemo extends game.Game {
       const e = new Boid(this, params); //create boid entity 
       this._entities.push(e); // add it to the entity list
     }
-
-    const light = new THREE.PointLight(0x00ffff, 5, 50); // Cyan light, intensity 1, max distance 10
-    light.position.set(0, 0, 2); // Center the light on the fish
-    this._mesh.add(light); // Attach the light to the fish mesh
   }
    
 
@@ -635,7 +684,6 @@ _Main();
 
 //THINGS TO DO: 
 
-//Implement the singingState to the starting position - for the fish to rise to this position only when singing begins 
+//I want the height of the spiral to be based upon the value of the volume, it goes up higher the louder the volume and lower the
 
-//Add a predator fish that moves in circular movements/ a spiral going higher using on variable and lower using another
-//get the fish to follow this as a target 
+//

@@ -33,10 +33,14 @@
     let audioBuffer; // Store audio buffer for replay
 
     let rmsValues = []; // To store RMS values for the current second
-let lastTimestamp = performance.now(); // To track when a second has elapsed
+    let lastTimestamp = performance.now(); // To track when a second has elapsed
+
+    let peakFreqValues = [];
+    let lastPeakFreqTimestamp = performance.now();  // Initialize timestamp for peak frequency
+
  
     // Load audio file directly (replace with your audio file's path)
-    const audioFile = 'resources/voiceA.mp3';  // Path to your audio file
+    const audioFile = 'resources/N03 Soprano.wav';  // Path to your audio file
 
     // Fetch and decode the audio file
     fetch(audioFile)
@@ -113,6 +117,7 @@ playButton.addEventListener('click', () => {
       }
 
   
+
 // Function to calculate RMS
 function calculateRMS(timeDomainData) {
   let sum = 0;
@@ -120,8 +125,6 @@ function calculateRMS(timeDomainData) {
     sum += Math.pow(timeDomainData[i] - 128, 2); // Assuming 8-bit audio (zero point is 128)
   }
   return Math.sqrt(sum / timeDomainData.length);
- 
-  processAudio(timeDomainData)
 }
 
 // Function to process audio frames
@@ -130,17 +133,19 @@ function processAudio(timeDomainData) {
   const rms = calculateRMS(timeDomainData);
   rmsValues.push(rms);
 
-  // Check if a second has elapsed
-  if (currentTimestamp - lastTimestamp >= 100) {
+  // Check if a second has elapsed (1 second interval check)
+  if (currentTimestamp - lastTimestamp >= 50) {  // 1000ms = 1 second
     // Calculate the average RMS for the past second
     const averageRMS = rmsValues.reduce((sum, value) => sum + value, 0) / rmsValues.length;
-    console.log('Average RMS for the last second:', averageRMS);
 
     // Reset for the next second
     rmsValues = [];
     lastTimestamp = currentTimestamp;
-
-    return averageRMS;
+    
+    const vol = Math.round(averageRMS);
+    console.log('Average RMS for the last second:', vol);
+    
+    postVol(vol);  // Now post volume to the server
   }
 }
 
@@ -151,52 +156,63 @@ setInterval(() => {
   processAudio(timeDomainData);
 }, 50); // Process every 50ms or as per your audio frame rate
 
+// Function to post volume data to server
+function postVol(vol) {
+  console.log("Current average vol:", vol); // Log volume for debugging
 
+  fetch('http://localhost:3000/vol', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ vol }) // Send the volume to the server
+  })
+  .then(response => {
+    if (!response.ok) {
+      return response.json().then(err => { throw new Error(err.message); });  // Log error message
+    }
+    return response.json();
+  })
+  .then(data => {
+    console.log('Volume updated:', data);
+  })
+  .catch(error => {
+    console.error('Error updating volume:', error);
+  });
+}
       
-      // Find peak frequency (highest amplitude in frequency data)
-      function findPeakFrequency(frequencyData) {
-        let maxAmplitude = 0;
-        let peakFreqIndex = 0;
+function findPeakFrequency(frequencyData) {
+    let maxAmplitude = 0;
+    let peakFreqIndex = 0;
 
-        for (let i = 0; i < frequencyData.length; i++) {
-          if (frequencyData[i] > maxAmplitude) {
+    for (let i = 0; i < frequencyData.length; i++) {
+        if (frequencyData[i] > maxAmplitude) {
             maxAmplitude = frequencyData[i];
             peakFreqIndex = i;
-          }
         }
+    }
 
-        const nyquist = audioContext.sampleRate / 2;
-        const peakFrequency = (peakFreqIndex / bufferLength) * nyquist ;
-        const roundedPeakFreq = Math.round(peakFrequency);
-      
-        postPeakFreq(roundedPeakFreq); 
-        return roundedPeakFreq
-      }
+    const nyquist = audioContext.sampleRate / 2;
+    const peakFrequency = Math.round((peakFreqIndex / bufferLength) * nyquist /10);
+
+    // Post the frequency regardless of its value
+    if (peakFrequency > 0) {
+        postPeakFreq(peakFrequency);
+    }
+    return peakFrequency;
+}
 
      
      
 
-      function postPeakFreq(peakFrequency) {
-  console.log("Current Peak Frequency", peakFrequency); // console log the current state to see if its being checked
- 
+function postPeakFreq(peakFrequency) {
     fetch('http://localhost:3000/peakFreq', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ peakFrequency }) // post the state to the server 
-    })
-    .then(response => {
-      if (!response.ok) {
-        return response.json().then(err => { throw new Error(err.message); });  // if re
-      }
-      return response.json();
-    })
-    .then(data => {
-      console.log('Peak Frequency updated:', data);
-    })
-    .catch(error => {
-      console.error('Error updating peak frequency:', error);
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ peakFrequency })
+    }).catch(error => {
+        console.error('Error posting peak frequency, retrying...', error);
+        setTimeout(() => postPeakFreq(peakFrequency), 1000); // Retry after 1 second
     });
 }
 
@@ -272,7 +288,7 @@ function detectSinging(frequencyData) {
 }
 
 function postSingingState(state) {
-  console.log("Current state:", state); // console log the current state to see if its being checked
+ 
 
   if (state !== lastSingingStatus) {
     
@@ -296,11 +312,9 @@ function postSingingState(state) {
     })
     .catch(error => {
       console.error('Error updating singing state:', error);
-    });
-  } else {
-    console.log("State has not changed. No post required.");
-  }
-}
+          });
+        }}
+
 
 
       // Display extracted data
@@ -322,17 +336,6 @@ function postSingingState(state) {
       draw();
     }
 
-    // Fetch singing status from server every 5 seconds
-    function fetchSingingState() {
-      fetch('http://localhost:3000/singing')
-        .then(response => response.text())
-        .then(state => {
-          document.getElementById('singingStatus').innerText = `Server Singing Status: ${state}`;
-        })
-        .catch(error => console.error('Error fetching singing state:', error));
-    }
-
-    setInterval(fetchSingingState, 5000);
   </script>
 </body>
 </html>
