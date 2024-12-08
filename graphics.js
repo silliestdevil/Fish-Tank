@@ -44,7 +44,8 @@ export const graphics = (function() {
         const near = 1.0;
         const far = 1000.0;
         this._camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
-        this._camera.position.set(75, 20, 0);
+        this._camera.position.set(200, 0, 2);
+        this._camera.lookAt(new THREE.Vector3(0, 80, 0)); 
 
         this._scene = new THREE.Scene();
 

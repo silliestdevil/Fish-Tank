@@ -12,7 +12,8 @@ const loader = new GLTFLoader(); // Now you can use GLTFLoader
 // Variables for boid simulation and general permeters
 let _APP = null;
 
-const _BOID_SPEED = 10; //Speed of boids
+let isSinging = false; 
+const _BOID_SPEED = 20; //Speed of boids
 const _BOID_ACCELERATION = _BOID_SPEED / 2.0; //Acceleration rate of boids
 const _BOID_FORCE_MAX = _BOID_ACCELERATION / 5.0; //Maximum steering force
 const _BOID_FORCE_ORIGIN = 8; //Force applied to boids to move towards origin
@@ -21,6 +22,8 @@ const _BOID_FORCE_SEPARATION = 5; //Force to seperate from other boids
 const _BOID_FORCE_COHESION = 100; //Force to group with nearby boids
 const _BOID_FORCE_WANDER = 3; // Force to make boids wander around
  
+ 
+
 //Boid class for each fish in the simulation 
 class Boid {
 
@@ -36,24 +39,16 @@ class Boid {
     this._group = new THREE.Group();
     this._group.add(this._mesh); //Add the mesh to the group 
 
-     // Fetch singing status from server every 5 seconds
-  
-      fetch('http://localhost:3000/singing')
-        .then(response => response.text())
-        .then(state => {
-          document.getElementById('singingStatus').innerText = `Server Singing Status: ${state}`;
-        })
-        .catch(error => console.error('Error fetching singing state:', error));
-        console.log(singingState);
- 
-   
+    
     // Set random starting position within a certain range 
     this._group.position.set(
+      math.rand_range(5, 5),
       math.rand_range(0, 5),
-      math.rand_range(0, 0),
-      math.rand_range(0, 5)
+      math.rand_range(5, 5)
     );
- 
+
+    this._group.rotation.z = Math.PI / 2; 
+    this._group.rotation.y = math.rand_range(0, Math.PI * 2);
     // Set random direction for the boid
     this._direction = new THREE.Vector3(
         math.rand_range(-1, 1),
@@ -128,10 +123,31 @@ class Boid {
  
 
   Step(timeInSeconds) { //Main update function for each step of simulation
-    if (this._displayDebug) {
-      let a = 0;
-    }
+  
+//   // Check if the fish is singing
+// if (!isSinging) {
+//   console.log("Fish cannot move, not singing.");
 
+//   // Float the fish upwards after 5 seconds if not singing
+//   setTimeout(() => {
+//     console.log("Fish is now floating upwards.");
+//     // Assuming `this._group` is the fish object
+//     this._group.position.y += 0.5;  // Move fish upwards by 10 units (adjust as needed)
+
+//     // After 5 seconds, set isSinging to true
+//     setTimeout(() => {
+//       isSinging = true;  // Change isSinging after the float
+//       console.log("isSinging has been set to true after floating.");
+//     }, 10000);  // 100ms delay before setting isSinging to true
+//   }, 1000);  // 5 seconds delay before floating upwards
+
+//   return;  // Exit the current function if the fish isn't singing yet
+// }
+
+// If isSinging is true, continue with the movement or other logic
+console.log("Fish can now move because it's singing.");
+
+   
     const local = this._game._visibilityGrid.GetLocalEntities(
         this.Position, 15);
 
@@ -143,7 +159,7 @@ class Boid {
     this._group.position.add(frameVelocity);
 
        // Define new half-size boundaries
-       const boundaryMin = new THREE.Vector3(-50, 1, -100);
+       const boundaryMin = new THREE.Vector3(-50, -70, -100);
        const boundaryMax = new THREE.Vector3( 50, 100, 100);
    
        // Call boundary checking and correction
@@ -370,7 +386,11 @@ class Target {
 
     // Debug sphere
     const geometry = new THREE.SphereGeometry(1, 16, 16);
-    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    // const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const material = new THREE.MeshBasicMaterial({ 
+      transparent: true, 
+      opacity: 0 
+  });
     this.debugMesh = new THREE.Mesh(geometry, material);
     this.game._graphics.Scene.add(this.debugMesh);
 
@@ -410,34 +430,34 @@ class Target {
       console.error('Error fetching peak frequency:', error);
     }
   }
-
   async getVolState() {
     try {
-      const response = await fetch('http://localhost:3000/vol', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
-  
-      if (!response.ok) {
-        const errorDetails = await response.clone().json();
-        throw new Error(errorDetails.message || "Failed to fetch volume state");
-      }
-  
-      const responseData = await response.json();
-      console.log('Parsed server response:', responseData);
-  
-      const volState = parseFloat(responseData.volState);
-      if (!isNaN(volState) && volState >= 0) {
-        this.verticalAmplitude = volState;
-        console.log('Vertical amplitude updated to:', this.verticalAmplitude);
-      } else {
-        console.warn(`Invalid volume received: "${responseData.volState}", using default amplitude.`);
-        this.verticalAmplitude = 10;
-      }
+        const response = await fetch('http://localhost:3000/vol', {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!response.ok) {
+            const errorDetails = await response.clone().json();
+            throw new Error(errorDetails.message || "Failed to fetch volume state");
+        }
+
+        const responseData = await response.json();
+        console.log('Parsed server response:', responseData);
+
+        const volState = parseFloat(responseData.volState);
+        if (!isNaN(volState) && volState >= 70 && volState <= 76) {
+            // Map the volume state to the desired Y-axis range
+            this.verticalAmplitude = this.mapValue(volState, 72, 75, -70, 200);
+            console.log('Vertical amplitude updated to:', this.verticalAmplitude);
+        } else {
+            console.warn(`Invalid volume received: "${responseData.volState}", using default amplitude.`);
+            this.verticalAmplitude = 10; // Default value
+        }
     } catch (error) {
-      console.error('Error fetching volume state:', error.message);
+        console.error('Error fetching volume state:', error.message);
     }
-  }
+}
 
 
   startFetchingVol() {
@@ -497,57 +517,106 @@ class FishDemo extends game.Game {
 
     this.target = new Target(new THREE.Vector3(0, 0, 0), this);
     //set background fog for the scene (creating underwater effect)
-    this._graphics.Scene.fog = new THREE.FogExp2(new THREE.Color(0x4d7dbe), 0.000);
+    this._graphics.Scene.fog = new THREE.FogExp2(new THREE.Color(0x4d7dbe), 0.001);
    
     //load background texture image
     this._LoadBackground();
 
-    
- 
-    //Load fish GTFL model using Thrpolyee.js loader
-    loader.load('./resources/FishLowPoly.glb', (gltf) => {
-      if (gltf && gltf.scene) {
-        console.log('GLTF model loaded');
-       
-        
-        // Find fishes mesh and materials
-        let fishMesh = null;
-        gltf.scene.traverse((child) => {
-          if (child.isMesh) {
-            console.log('Found mesh:', child);  // Log found mesh
-            fishMesh = child;
-          }
-        });
-    
-        // If a mesh and material are found, pass to _CreateBoid
-        if (fishMesh && fishMesh.material) {
-          const fishMaterial = fishMesh.material;
-          console.log('Using material:', fishMaterial);
-    
-          //  Create boids using mesh and material from fish model
-          this._CreateBoids(fishMesh.geometry, fishMaterial); 
-        } else {
-          console.error('No material found in the fish mesh.');
-        }
+// // Load fish GLTF model using THREE.js loader
+// loader.load('./resources/FishLowPoly.glb', (gltf) => {
+//   if (gltf && gltf.scene) {
+//     console.log('GLTF model loaded');
 
-        const boundaryMin = new THREE.Vector3(-400, 5, -400);
-        const boundaryMax = new THREE.Vector3(400, 500, 400);
+//     // Find fish mesh and materials
+//     let fishMesh = null;
+//     gltf.scene.traverse((child) => {
+//       if (child.isMesh) {
+//         console.log('Found mesh:', child);  // Log found mesh
+//         fishMesh = child;
+//       }
+//     });
+
+//     if (fishMesh && fishMesh.material) {
+//       // Load the background image using TextureLoader
+//       const textureLoader = new THREE.TextureLoader();
+//       const backgroundTexture = textureLoader.load('resources/DeepOcean-1.jpg'); // Replace with your background image path
+
+//       // Create a reflective FishMaterial with the loaded texture
+//       const FishMaterial = new THREE.MeshStandardMaterial({
+//         map: fishMesh.material.map,      // Use the fishMesh's texture (if available)
+//         envMap: backgroundTexture,       // Set the single background image as the environment map for reflection
+//         reflectivity:0.9,               // Adjust the reflectivity (0 = no reflection, 1 = perfect reflection)
+//         metalness: 0.8,                  // Increase metalness for a shinier look
+//         roughness: 0.3,                  // Lower roughness for smoother, brighter reflections
+//         emissive: new THREE.Color('rgb(0, 0, 255)'), // Make the material emit light (brighter)
+//         emissiveIntensity: 0.2,          // Control the intensity of the emissive color
+//         color: new THREE.Color(0xfffff), // Use a lighter color for the base of the material (white)
+//       });
+
+//       // Apply the reflective material to the fish mesh
+//       fishMesh.material = FishMaterial;
+
+//       // Now pass the FishMaterial to your _CreateBoids function
+//       this._CreateBoids(fishMesh.geometry, FishMaterial);
+//     }
+
+//     // Uncomment this if you want to handle animations
+//     // const boundaryMin = new THREE.Vector3(-400, 5, -400);
+//     // const boundaryMax = new THREE.Vector3(400, 500, 400);
+//     // this._setUpAnimations(gltf);
+
+//   } else {
+//     console.error('Failed to load the model!');
+//   }
+// }, undefined, (error) => {
+//   console.error('Error loading GLTF model:', error);
+// });
+
+        //Load fish GTFL model using Three.js loader
+        loader.load('./resources/FishLowPoly.glb', (gltf) => {
+          if (gltf && gltf.scene) {
+            console.log('GLTF model loaded');
+           
+            
+            // Find fishes mesh and materials
+            let fishMesh = null;
+            gltf.scene.traverse((child) => {
+              if (child.isMesh) {
+                console.log('Found mesh:', child);  // Log found mesh
+                fishMesh = child;
+              }
+            });
+        
+            // If a mesh and material are found, pass to _CreateBoid
+            if (fishMesh && fishMesh.material) {
+              const fishMaterial = fishMesh.material;
+              console.log('Using material:', fishMaterial);
+        
+              //  Create boids using mesh and material from fish model
+              this._CreateBoids(fishMesh.geometry, fishMaterial); 
+            } else {
+              console.error('No material found in the fish mesh.');
+            }
     
-        // // Set up animations if available
-        // this._setUpAnimations(gltf);
-      } else {
-        console.error('Failed to load the model!');
-      }
-    }, undefined, (error) => {
-      console.error('Error loading GLTF model:', error);
-    });
-    
+            const boundaryMin = new THREE.Vector3(-400, 5, -400);
+            const boundaryMax = new THREE.Vector3(400, 500, 400);
+        
+            // // Set up animations if available
+            // this._setUpAnimations(gltf);
+          } else {
+            console.error('Failed to load the model!');
+          }
+        }, undefined, (error) => {
+          console.error('Error loading GLTF model:', error);
+        });
+        
+       
     //create entities like plane and grif
     this._CreateEntities();
 
       // Set up fixed camera (e.g., 50 units above the origin, facing down)
-  this._graphics._camera.position.set(200, 0, 10); // Set camera position at a fixed height above the origin
-  this._graphics._camera.lookAt(new THREE.Vector3(0, 100, 0)); // Look at the origin
+  this._graphics._camera.position.set(200, 0, 2); // Set camera position at a fixed height above the origin
+  this._graphics._camera.lookAt(new THREE.Vector3(0, 60, 0)); // Look at the origin
 
   
   }
@@ -575,7 +644,7 @@ class FishDemo extends game.Game {
         new THREE.MeshStandardMaterial({
             color: 0x837860, //set colour etc
             transparent: true,
-            opacity: 0.2 ,
+            opacity: 0 ,
         }));
     plane.position.set(0, -5, 0); //postion plane
     plane.castShadow = false; // Disable shadow casting 
@@ -595,6 +664,7 @@ class FishDemo extends game.Game {
   _CreateBoids(fishGeometry, fishMaterial) {
     const NUM_BOIDS = 250;
   
+
     //parameteres to control the boids behaviour
     let params = {
       geometry: fishGeometry,  // Use the loaded geometry here
@@ -641,7 +711,7 @@ for (let e of this._entities) {
 
 
 // Call the function to fetch the singing state
-setInterval(getSingingState, 5000);
+// setInterval(getSingingState, 5000);
  
 //Main entry point for the application
 function _Main() {

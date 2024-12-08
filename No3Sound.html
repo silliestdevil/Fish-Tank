@@ -193,7 +193,7 @@ function findPeakFrequency(frequencyData) {
     }
 
     const nyquist = audioContext.sampleRate / 2;
-    const peakFrequency = Math.round((peakFreqIndex / bufferLength) * nyquist /10);
+    const peakFrequency = Math.round((peakFreqIndex / bufferLength) * nyquist / 2);
 
     // Post the frequency regardless of its value
     if (peakFrequency > 0) {

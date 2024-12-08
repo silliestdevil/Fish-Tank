@@ -4,7 +4,7 @@ const app = express()
  
 let peakFreqState = 0; 
 let volState = 0;
-let singingState = "not singing";
+let singingState = "Non-singing";
 
 app.use(bodyParser.json());
 app.use(function(req, res, next) {
@@ -50,7 +50,7 @@ app.get('/peakFreq', (req, res) => {
 
 //Handle GET /singing to get current singing status
 app.get('/singing', (req, res) => {
-    res.send(singingState) //get the singing state
+    res.send(singingState); //get the singing state
 })
 
 //Post for singing to update singing status
