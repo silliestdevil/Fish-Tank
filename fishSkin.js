@@ -22,8 +22,6 @@ const _BOID_FORCE_SEPARATION = 5; //Force to seperate from other boids
 const _BOID_FORCE_COHESION = 100; //Force to group with nearby boids
 const _BOID_FORCE_WANDER = 3; // Force to make boids wander around
  
- 
-
 //Boid class for each fish in the simulation 
 class Boid {
 
@@ -62,7 +60,7 @@ class Boid {
     this._maxSpeed  = params.speed * speedMultiplier;  
     this._acceleration = params.acceleration * speedMultiplier;  
 
-    const scale = 3.0 / speedMultiplier;
+    const scale = 6.0 / speedMultiplier;
     this._radius = scale;
     this._mesh.scale.setScalar(scale); //Scale the mesh
     this._mesh.rotateX(-Math.PI / 2); //Rotate mesh to face correct direction 
@@ -124,28 +122,27 @@ class Boid {
 
   Step(timeInSeconds) { //Main update function for each step of simulation
   
-//   // Check if the fish is singing
-// if (!isSinging) {
+// //   // Check if the fish is singing
+// /if (!isSinging) {
 //   console.log("Fish cannot move, not singing.");
-
-//   // Float the fish upwards after 5 seconds if not singing
+ 
+// //   //Float the fish upwards after 5 seconds if not singing
 //   setTimeout(() => {
 //     console.log("Fish is now floating upwards.");
-//     // Assuming `this._group` is the fish object
-//     this._group.position.y += 0.5;  // Move fish upwards by 10 units (adjust as needed)
+// //     // Assuming `this._group` is the fish object
+//    this._group.position.y += 0.5;  // Move fish upwards by 10 units (adjust as needed)
 
-//     // After 5 seconds, set isSinging to true
-//     setTimeout(() => {
-//       isSinging = true;  // Change isSinging after the float
-//       console.log("isSinging has been set to true after floating.");
-//     }, 10000);  // 100ms delay before setting isSinging to true
+// //     // After 5 seconds, set isSinging to true
+//      setTimeout(() => {
+//        isSinging = true;  // Change isSinging after the float
+//        console.log("isSinging has been set to true after floating.");
+//      }, 10000);  // 100ms delay before setting isSinging to true
 //   }, 1000);  // 5 seconds delay before floating upwards
 
-//   return;  // Exit the current function if the fish isn't singing yet
-// }
+//  }
 
-// If isSinging is true, continue with the movement or other logic
-console.log("Fish can now move because it's singing.");
+// // If isSinging is true, continue with the movement or other logic
+//   console.log("Fish can now move because it's singing.");
 
    
     const local = this._game._visibilityGrid.GetLocalEntities(
@@ -160,7 +157,7 @@ console.log("Fish can now move because it's singing.");
 
        // Define new half-size boundaries
        const boundaryMin = new THREE.Vector3(-50, -70, -100);
-       const boundaryMax = new THREE.Vector3( 50, 100, 100);
+       const boundaryMax = new THREE.Vector3( 50, 90, 100);
    
        // Call boundary checking and correction
        this._ApplyBoundaryForce(boundaryMin, boundaryMax);
@@ -241,10 +238,10 @@ console.log("Fish can now move because it's singing.");
       steeringForce.add(f);
     } //combine all forces
 
-    //Apply acceleration and clamping of steering force
+    //Apply acceleration  of steering force
     steeringForce.multiplyScalar(this._acceleration * timeInSeconds);
 
-    // Preferentially move in x/z dimension
+    //  move in x/z dimension
     steeringForce.multiply(new THREE.Vector3(1, 0.25, 1));
 
     // Clamp the force applied
@@ -389,6 +386,7 @@ class Target {
     // const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
     const material = new THREE.MeshBasicMaterial({ 
       transparent: true, 
+      color: 0xff00000,
       opacity: 0 
   });
     this.debugMesh = new THREE.Mesh(geometry, material);
@@ -573,7 +571,7 @@ class FishDemo extends game.Game {
 // });
 
         //Load fish GTFL model using Three.js loader
-        loader.load('./resources/FishLowPoly.glb', (gltf) => {
+        loader.load('./resources/white.glb', (gltf) => {
           if (gltf && gltf.scene) {
             console.log('GLTF model loaded');
            
@@ -624,13 +622,13 @@ class FishDemo extends game.Game {
   //;pad background texture (underwater scene)
    _LoadBackground() {
   const loader = new THREE.TextureLoader();
-  const texture = loader.load('./resources/underwater.jpg');
+  const texture = loader.load('./resources/invert.jpg');
   
   this._graphics._scene.background = texture;
 
 //  this._graphics._scene.background = new THREE.Color(0x000000);
   // Add ambient light for soft lighting in the scene
-  const light = new THREE.AmbientLight(0x404040, 2); // (color, intensity)
+  const light = new THREE.AmbientLight(0x404040, 1); // (color, intensity)
   this._graphics._scene.add(light);
     
   }
@@ -662,7 +660,7 @@ class FishDemo extends game.Game {
 
   // create boids based on geometry and material 
   _CreateBoids(fishGeometry, fishMaterial) {
-    const NUM_BOIDS = 250;
+    const NUM_BOIDS = 100;
   
 
     //parameteres to control the boids behaviour
