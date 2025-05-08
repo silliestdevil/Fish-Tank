@@ -718,11 +718,4 @@ function _Main() {
 }
 //start simulation by calling the main function 
 _Main();
-
-
-
-//THINGS TO DO: 
-
-//I want the height of the spiral to be based upon the value of the volume 
-
-//
+ 
